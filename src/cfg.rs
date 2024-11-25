@@ -113,6 +113,48 @@ impl CFG {
             start_symbol: s,
         }
     }
+
+    fn calculate_nullables(&self) -> HashMap<Rc<NonTerminal>, bool> {
+        let mut nullables = self
+            .non_terminals
+            .iter()
+            .map(|key| (key.clone(), false))
+            .collect::<HashMap<Rc<NonTerminal>, bool>>();
+
+        let mut nullables_current = nullables.clone();
+
+        // 最小不動点を計算する
+        loop {
+            let mut changed = false;
+            for x in self.non_terminals.iter() {
+                let current = *nullables_current.get(x).unwrap();
+
+                let rhs_s = self.productions.get(x).unwrap();
+                for rhs in rhs_s.iter() {
+                    let new = rhs.iter().all(|symbol| {
+                        if self.terminals.contains(symbol) {
+                            false
+                        } else {
+                            *nullables_current.get(symbol).unwrap()
+                        }
+                    });
+                    if current != new {
+                        assert_eq!(new, true); // new は true のはず
+                        *nullables.get_mut(x).unwrap() = new;
+                        changed = true;
+                    }
+                }
+            }
+
+            nullables_current = nullables.clone();
+
+            if changed {
+                break;
+            }
+        }
+
+        nullables
+    }
 }
 
 #[cfg(test)]
@@ -123,7 +165,7 @@ mod cfg_tests {
     fn create_valid_grammar() {
         let terminals = vec!["+", "*", "i", "(", ")"];
 
-        let non_terminals = vec!["E", "E'","T", "T'", "F"];
+        let non_terminals = vec!["E", "E'", "T", "T'", "F"];
 
         let productions = vec![
             ("E", vec!["T", "E'"]),
@@ -167,13 +209,11 @@ mod cfg_tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "'?' is neither included in non_terminals nor terminals."
-    )]
+    #[should_panic(expected = "'?' is neither included in non_terminals nor terminals.")]
     fn pass_productions_with_symbol_included_neither_non_terminals_nor_terminals_in_rhs() {
         let terminals = vec!["+", "*", "i", "(", ")"];
 
-        let non_terminals = vec!["E", "E'","T", "T'", "F"];
+        let non_terminals = vec!["E", "E'", "T", "T'", "F"];
 
         let productions = vec![
             ("E", vec!["T", "E'"]),
@@ -215,11 +255,13 @@ mod cfg_tests {
     }
 
     #[test]
-    #[should_panic(expected = "'G' is not included in non_terminals. It must be included in non_terminals.")]
+    #[should_panic(
+        expected = "'G' is not included in non_terminals. It must be included in non_terminals."
+    )]
     fn pass_start_symbol_not_included_in_non_terminals() {
         let terminals = vec!["+", "*", "i", "(", ")"];
 
-        let non_terminals = vec!["E", "E'","T", "T'", "F"];
+        let non_terminals = vec!["E", "E'", "T", "T'", "F"];
 
         let productions = vec![
             ("E", vec!["T", "E'"]),
@@ -236,4 +278,41 @@ mod cfg_tests {
 
         let _ = CFG::new(terminals, non_terminals, productions, start_symbol);
     }
+
+    #[test]
+    fn calculate_nullables() {
+        let terminals = vec!["+", "*", "i", "(", ")"];
+
+        let non_terminals = vec!["E", "E'", "T", "T'", "F"];
+
+        let productions = vec![
+            ("E", vec!["T", "E'"]),
+            ("E'", vec!["+", "T", "E'"]),
+            ("E'", vec![]),
+            ("T", vec!["F", "T'"]),
+            ("T'", vec!["*", "F", "T'"]),
+            ("T'", vec![]),
+            ("F", vec!["(", "E", ")"]),
+            ("F", vec!["i"]),
+        ];
+
+        let start_symbol = "E";
+
+        let g2 = CFG::new(terminals, non_terminals, productions, start_symbol);
+
+        let nullables = g2.calculate_nullables();
+
+        let nullables_true = nullables
+            .into_iter()
+            .filter(|(_, t)| *t)
+            .map(|(x, _)| x)
+            .collect::<HashSet<_>>();
+
+        let mut nullables_true_expected = HashSet::new();
+        nullables_true_expected.insert(Rc::new("E'".to_string()));
+        nullables_true_expected.insert(Rc::new("T'".to_string()));
+
+        assert_eq!(nullables_true, nullables_true_expected);
+    }
+
 }
