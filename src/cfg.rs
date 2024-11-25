@@ -130,31 +130,86 @@ impl CFG {
                 let current = *nullables_current.get(x).unwrap();
 
                 let rhs_s = self.productions.get(x).unwrap();
+                let mut new = false;
                 for rhs in rhs_s.iter() {
-                    let new = rhs.iter().all(|symbol| {
-                        if self.terminals.contains(symbol) {
-                            false
-                        } else {
-                            *nullables_current.get(symbol).unwrap()
-                        }
-                    });
-                    if current != new {
-                        assert_eq!(new, true); // new は true のはず
-                        *nullables.get_mut(x).unwrap() = new;
-                        changed = true;
-                    }
+                    new = new
+                        || rhs.iter().all(|symbol| {
+                            if self.terminals.contains(symbol) {
+                                false
+                            } else {
+                                *nullables_current.get(symbol).unwrap()
+                            }
+                        });
+                }
+                if current != new {
+                    debug_assert_eq!(new, true); // new は true のはず
+                    *nullables.get_mut(x).unwrap() = new;
+                    changed = true;
                 }
             }
 
             nullables_current = nullables.clone();
 
-            if changed {
+            if !changed {
                 break;
             }
         }
 
         nullables
     }
+
+    fn calculate_first_sets(&self) -> HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>> {
+        let mut first_sets = self
+            .non_terminals
+            .iter()
+            .map(|x| (x.clone(), HashSet::new()))
+            .collect::<HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>>>();
+
+        let mut first_sets_current = first_sets.clone();
+
+        let nullables = self.calculate_nullables();
+
+        loop {
+            let mut changed = false;
+
+            for x in self.non_terminals.iter() {
+                let current = first_sets_current.get(x).unwrap();
+
+                let rhs_s = self.productions.get(x).unwrap();
+
+                let mut new = HashSet::new();
+
+                for rhs in rhs_s.iter() {
+                    for symbol in rhs.iter() {
+                        if self.terminals.contains(symbol) {
+                            new.insert(symbol.clone());
+                            break;
+                        } else {
+                            new.extend(first_sets_current.get(symbol).unwrap().iter().cloned());
+                            if !nullables.get(symbol).unwrap() {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if *current != new {
+                    debug_assert!(current.is_subset(&new)); // new の方が大きくなっているはず
+                    *first_sets.get_mut(x).unwrap() = new;
+                    changed = true;
+                }
+            }
+
+            first_sets_current = first_sets.clone();
+
+            if !changed {
+                break;
+            }
+        }
+
+        first_sets
+    }
+
 }
 
 #[cfg(test)]
@@ -313,6 +368,50 @@ mod cfg_tests {
         nullables_true_expected.insert(Rc::new("T'".to_string()));
 
         assert_eq!(nullables_true, nullables_true_expected);
+    }
+
+    #[test]
+    fn calculate_first_set() {
+        let terminals = vec!["+", "*", "i", "(", ")"];
+
+        let non_terminals = vec!["E", "E'", "T", "T'", "F"];
+
+        let productions = vec![
+            ("E", vec!["T", "E'"]),
+            ("E'", vec!["+", "T", "E'"]),
+            ("E'", vec![]),
+            ("T", vec!["F", "T'"]),
+            ("T'", vec!["*", "F", "T'"]),
+            ("T'", vec![]),
+            ("F", vec!["(", "E", ")"]),
+            ("F", vec!["i"]),
+        ];
+
+        let start_symbol = "E";
+
+        let g2 = CFG::new(terminals, non_terminals, productions, start_symbol);
+
+        let first_set = g2.calculate_first_sets();
+
+        let first_set_expected = [
+            ("E'", vec!["+"]),
+            ("T", vec!["(", "i"]),
+            ("F", vec!["(", "i"]),
+            ("E", vec!["(", "i"]),
+            ("T'", vec!["*"]),
+        ]
+        .into_iter()
+        .map(|(v, fs)| {
+            (
+                Rc::new(v.to_string()),
+                fs.into_iter()
+                    .map(|c| Rc::new(c.to_string()))
+                    .collect::<HashSet<_>>(),
+            )
+        })
+        .collect::<HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>>>();
+
+        assert_eq!(first_set, first_set_expected);
     }
 
 }
