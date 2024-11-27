@@ -169,12 +169,11 @@ impl CFG {
 
         let nullables = self.calculate_nullables();
 
+        // 最小不動点の計算
         loop {
             let mut changed = false;
 
             for x in self.non_terminals.iter() {
-                let current = first_sets_current.get(x).unwrap();
-
                 let rhs_s = self.productions.get(x).unwrap();
 
                 let mut new = HashSet::new();
@@ -193,6 +192,8 @@ impl CFG {
                     }
                 }
 
+                let current = first_sets_current.get(x).unwrap();
+
                 if *current != new {
                     debug_assert!(current.is_subset(&new)); // new の方が大きくなっているはず
                     *first_sets.get_mut(x).unwrap() = new;
@@ -208,6 +209,93 @@ impl CFG {
         }
 
         first_sets
+    }
+
+    fn calculate_follow_sets(&self) -> HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>> {
+        let mut follow_sets = self
+            .non_terminals
+            .iter()
+            .map(|x| (x.clone(), HashSet::new()))
+            .collect::<HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>>>();
+
+        let mut follow_sets_current = follow_sets.clone();
+
+        let nullables = self.calculate_nullables();
+        let first_sets = self.calculate_first_sets();
+
+        // production の右辺で出てくるnon_terminalを調べておく
+        // x を key とするとき、value には Y -> γxδ なる (Y, δ) を詰め込んだ Vec が入る
+        let mut y_and_delta_s = self
+            .non_terminals
+            .iter()
+            .map(|x| (x.clone(), vec![]))
+            .collect::<HashMap<Rc<NonTerminal>, Vec<(Rc<NonTerminal>, Vec<Rc<Symbol>>)>>>();
+        for (y, rhs_s) in self.productions.iter() {
+            for rhs in rhs_s.iter() {
+                for i in 0..rhs.len() {
+                    let symbol = &rhs[i];
+                    if self.non_terminals.contains(symbol) {
+                        let delta = rhs[i + 1..rhs.len()].to_vec();
+                        y_and_delta_s
+                            .get_mut(symbol)
+                            .unwrap()
+                            .push((y.clone(), delta));
+                    }
+                }
+            }
+        }
+
+        // 最小不動点の計算
+        loop {
+            let mut changed = false;
+
+            for x in self.non_terminals.iter() {
+                let y_and_delta_s_for_x = y_and_delta_s.get(x).unwrap();
+
+                let mut new = HashSet::new();
+
+                for (y, delta) in y_and_delta_s_for_x.iter() {
+                    let mut first_sets_of_delta = HashSet::new();
+
+                    for symbol in delta.iter() {
+                        if self.terminals.contains(symbol) {
+                            first_sets_of_delta.insert(symbol.clone());
+                        } else {
+                            first_sets_of_delta
+                                .extend(first_sets.get(symbol).unwrap().iter().cloned());
+                        }
+
+                        if !nullables.get(symbol).unwrap_or(&false) {
+                            break;
+                        }
+                    }
+
+                    new.extend(first_sets_of_delta);
+
+                    let delta_is_nullable = delta
+                        .iter()
+                        .all(|symbol| *nullables.get(symbol).unwrap_or(&false));
+
+                    if delta_is_nullable {
+                        new.extend(follow_sets_current.get(y).unwrap().clone());
+                    }
+                }
+
+                let current = follow_sets_current.get(x).unwrap();
+                if *current != new {
+                    *follow_sets.get_mut(x).unwrap() = new;
+                    changed = true;
+                }
+            }
+
+            follow_sets_current = follow_sets.clone();
+
+            if !changed {
+                break;
+            }
+        }
+
+        follow_sets
     }
 
 }
@@ -371,7 +459,7 @@ mod cfg_tests {
     }
 
     #[test]
-    fn calculate_first_set() {
+    fn calculate_first_sets() {
         let terminals = vec!["+", "*", "i", "(", ")"];
 
         let non_terminals = vec!["E", "E'", "T", "T'", "F"];
@@ -391,9 +479,9 @@ mod cfg_tests {
 
         let g2 = CFG::new(terminals, non_terminals, productions, start_symbol);
 
-        let first_set = g2.calculate_first_sets();
+        let first_sets = g2.calculate_first_sets();
 
-        let first_set_expected = [
+        let first_sets_expected = [
             ("E'", vec!["+"]),
             ("T", vec!["(", "i"]),
             ("F", vec!["(", "i"]),
@@ -411,7 +499,50 @@ mod cfg_tests {
         })
         .collect::<HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>>>();
 
-        assert_eq!(first_set, first_set_expected);
+        assert_eq!(first_sets, first_sets_expected);
     }
 
+    #[test]
+    fn calculate_follow_sets() {
+        let terminals = vec!["+", "*", "i", "(", ")"];
+
+        let non_terminals = vec!["E", "E'", "T", "T'", "F"];
+
+        let productions = vec![
+            ("E", vec!["T", "E'"]),
+            ("E'", vec!["+", "T", "E'"]),
+            ("E'", vec![]),
+            ("T", vec!["F", "T'"]),
+            ("T'", vec!["*", "F", "T'"]),
+            ("T'", vec![]),
+            ("F", vec!["(", "E", ")"]),
+            ("F", vec!["i"]),
+        ];
+
+        let start_symbol = "E";
+
+        let g2 = CFG::new(terminals, non_terminals, productions, start_symbol);
+
+        let follow_sets = g2.calculate_follow_sets();
+
+        let follow_sets_expected = [
+            ("E", vec![")"]),
+            ("E'", vec![")"]),
+            ("T", vec!["+", ")"]),
+            ("T'", vec!["+", ")"]),
+            ("F", vec!["*", "+", ")"]),
+        ]
+        .into_iter()
+        .map(|(v, fs)| {
+            (
+                Rc::new(v.to_string()),
+                fs.into_iter()
+                    .map(|c| Rc::new(c.to_string()))
+                    .collect::<HashSet<_>>(),
+            )
+        })
+        .collect::<HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>>>();
+
+        assert_eq!(follow_sets, follow_sets_expected);
+    }
 }
