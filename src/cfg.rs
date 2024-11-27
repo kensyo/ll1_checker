@@ -298,6 +298,53 @@ impl CFG {
         follow_sets
     }
 
+    fn calculate_director_sets(
+        &self,
+    ) -> HashMap<(Rc<NonTerminal>, Vec<Rc<Symbol>>), HashSet<Rc<Terminal>>> {
+        let nullables = self.calculate_nullables();
+        let first_sets = self.calculate_first_sets();
+        let follow_sets = self.calculate_follow_sets();
+
+        let mut director_sets = self
+            .productions
+            .iter()
+            .flat_map(|(x, rhs_s)| {
+                rhs_s
+                    .iter()
+                    .map(|rhs| ((x.clone(), rhs.clone()), HashSet::new()))
+            })
+            .collect::<HashMap<(Rc<NonTerminal>, Vec<Rc<Symbol>>), HashSet<Rc<Terminal>>>>();
+
+        for (x, rhs_s) in self.productions.iter() {
+            for rhs in rhs_s.iter() {
+                let mut res = HashSet::new();
+                // rhs の First set を求める
+                for symbol in rhs.iter() {
+                    if self.terminals.contains(symbol) {
+                        res.insert(symbol.clone());
+                        break;
+                    } else {
+                        res.extend(first_sets.get(symbol).unwrap().clone());
+                        if !nullables.get(symbol).unwrap() {
+                            break;
+                        }
+                    }
+                }
+
+                let rhs_is_nullable = rhs
+                    .iter()
+                    .all(|symbol| *nullables.get(symbol).unwrap_or(&false));
+                if rhs_is_nullable {
+                    res.extend(follow_sets.get(x).unwrap().clone());
+                }
+
+                *director_sets.get_mut(&(x.clone(), rhs.clone())).unwrap() = res;
+            }
+        }
+
+        director_sets
+    }
+
 }
 
 #[cfg(test)]
@@ -545,4 +592,57 @@ mod cfg_tests {
 
         assert_eq!(follow_sets, follow_sets_expected);
     }
+
+    #[test]
+    fn calculate_director_sets() {
+        let terminals = vec!["+", "*", "i", "(", ")"];
+
+        let non_terminals = vec!["E", "E'", "T", "T'", "F"];
+
+        let productions = vec![
+            ("E", vec!["T", "E'"]),
+            ("E'", vec!["+", "T", "E'"]),
+            ("E'", vec![]),
+            ("T", vec!["F", "T'"]),
+            ("T'", vec!["*", "F", "T'"]),
+            ("T'", vec![]),
+            ("F", vec!["(", "E", ")"]),
+            ("F", vec!["i"]),
+        ];
+
+        let start_symbol = "E";
+
+        let g2 = CFG::new(terminals, non_terminals, productions, start_symbol);
+
+        let director_sets = g2.calculate_director_sets();
+
+        let director_sets_expected = [
+            (("E", vec!["T", "E'"]), vec!["(", "i"]),
+            (("E'", vec!["+", "T", "E'"]), vec!["+"]),
+            (("E'", vec![]), vec![")"]),
+            (("T", vec!["F", "T'"]), vec!["(", "i"]),
+            (("T'", vec!["*", "F", "T'"]), vec!["*"]),
+            (("T'", vec![]), vec!["+", ")"]),
+            (("F", vec!["(", "E", ")"]), vec!["("]),
+            (("F", vec!["i"]), vec!["i"]),
+        ]
+        .into_iter()
+        .map(|((x, rhs), ds)| {
+            (
+                (
+                    Rc::new(x.to_string()),
+                    rhs.into_iter()
+                        .map(|symbol| Rc::new(symbol.to_string()))
+                        .collect::<Vec<Rc<Symbol>>>(),
+                ),
+                ds.into_iter()
+                    .map(|c| Rc::new(c.to_string()))
+                    .collect::<HashSet<_>>(),
+            )
+        })
+        .collect::<HashMap<(Rc<NonTerminal>, Vec<Rc<Symbol>>), HashSet<Rc<Terminal>>>>();
+
+        assert_eq!(director_sets, director_sets_expected);
+    }
+
 }
