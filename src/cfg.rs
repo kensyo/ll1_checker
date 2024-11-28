@@ -348,6 +348,26 @@ impl CFG {
         director_sets
     }
 
+    pub fn is_ll1(&self) -> bool {
+        let director_sets = self.calculate_director_sets();
+
+        for (_, sets) in director_sets.iter() {
+            let keys: Vec<_> = sets.keys().collect();
+
+            for i in 0..keys.len() {
+                for j in (i + 1)..keys.len() {
+                    let set1 = &sets[keys[i]];
+                    let set2 = &sets[keys[j]];
+
+                    if !set1.is_disjoint(&set2) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        true
+    }
 }
 
 #[cfg(test)]
@@ -651,4 +671,27 @@ mod cfg_tests {
         assert_eq!(director_sets, director_sets_expected);
     }
 
+    #[test]
+    fn check_ll1() {
+        let terminals = vec!["+", "*", "i", "(", ")"];
+
+        let non_terminals = vec!["E", "E'", "T", "T'", "F"];
+
+        let productions = vec![
+            ("E", vec!["T", "E'"]),
+            ("E'", vec!["+", "T", "E'"]),
+            ("E'", vec![]),
+            ("T", vec!["F", "T'"]),
+            ("T'", vec!["*", "F", "T'"]),
+            ("T'", vec![]),
+            ("F", vec!["(", "E", ")"]),
+            ("F", vec!["i"]),
+        ];
+
+        let start_symbol = "E";
+
+        let g2 = CFG::new(terminals, non_terminals, productions, start_symbol);
+
+        assert!(g2.is_ll1());
+    }
 }
