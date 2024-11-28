@@ -114,7 +114,7 @@ impl CFG {
         }
     }
 
-    fn calculate_nullables(&self) -> HashMap<Rc<NonTerminal>, bool> {
+    pub fn calculate_nullables(&self) -> HashMap<Rc<NonTerminal>, bool> {
         let mut nullables = self
             .non_terminals
             .iter()
@@ -158,7 +158,7 @@ impl CFG {
         nullables
     }
 
-    fn calculate_first_sets(&self) -> HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>> {
+    pub fn calculate_first_sets(&self) -> HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>> {
         let mut first_sets = self
             .non_terminals
             .iter()
@@ -211,7 +211,7 @@ impl CFG {
         first_sets
     }
 
-    fn calculate_follow_sets(&self) -> HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>> {
+    pub fn calculate_follow_sets(&self) -> HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>> {
         let mut follow_sets = self
             .non_terminals
             .iter()
@@ -298,7 +298,7 @@ impl CFG {
         follow_sets
     }
 
-    fn calculate_director_sets(
+    pub fn calculate_director_sets(
         &self,
     ) -> HashMap<Rc<NonTerminal>, HashMap<Vec<Rc<Symbol>>, HashSet<Rc<Terminal>>>> {
         let nullables = self.calculate_nullables();
@@ -351,13 +351,13 @@ impl CFG {
     pub fn is_ll1(&self) -> bool {
         let director_sets = self.calculate_director_sets();
 
-        for (_, sets) in director_sets.iter() {
-            let keys: Vec<_> = sets.keys().collect();
+        for (_, hm) in director_sets.iter() {
+            let keys: Vec<_> = hm.keys().collect();
 
             for i in 0..keys.len() {
                 for j in (i + 1)..keys.len() {
-                    let set1 = &sets[keys[i]];
-                    let set2 = &sets[keys[j]];
+                    let set1 = &hm[keys[i]];
+                    let set2 = &hm[keys[j]];
 
                     if !set1.is_disjoint(&set2) {
                         return false;
