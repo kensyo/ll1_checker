@@ -58,4 +58,6 @@ fn main() {
     let g = CFG::new(terminals, non_terminals, productions, start_symbol);
 
     println!("Your CFG is{} ll(1).", if g.is_ll1() { "" } else { " not" });
+
+    g.show_director_sets();
 }

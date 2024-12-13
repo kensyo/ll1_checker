@@ -368,6 +368,15 @@ impl CFG {
 
         true
     }
+
+    /// notest
+    pub fn show_director_sets(&self)  {
+        let director_sets = self.calculate_director_sets();
+
+        println!("{:?}", director_sets);
+
+    }
+
 }
 
 #[cfg(test)]
