@@ -341,23 +341,23 @@ mod rrcfg_test {
     #[test]
     fn check_ll1() {
         {
-            // let terminals = vec!["+", "*", "i", "(", ")"];
-            //
-            // let non_terminals = vec!["E", "T", "F"];
-            //
-            // let productions = vec![
-            //     ("E", vec!["T", "\\{", "+", "T", "\\}"]),
-            //     ("T", vec!["F", "\\{", "*", "F", "\\}"]),
-            //     ("F", vec!["(", "E", ")", "\\|", "i"]),
-            // ];
-            //
-            // let start_symbol = "E";
-            //
-            // let g3 = RRCFG::new(terminals, non_terminals, productions, start_symbol);
-            //
-            // println!("{:?}", g3.cfg);
-            //
-            // assert!(g3.is_ll1());
+            let terminals = vec!["+", "*", "i", "(", ")"];
+
+            let non_terminals = vec!["E", "T", "F"];
+
+            let productions = vec![
+                ("E", vec!["T", "\\{", "+", "T", "\\}"]),
+                ("T", vec!["F", "\\{", "*", "F", "\\}"]),
+                ("F", vec!["(", "E", ")", "\\|", "i"]),
+            ];
+
+            let start_symbol = "E";
+
+            let g3 = RRCFG::new(terminals, non_terminals, productions, start_symbol);
+
+            println!("{:?}", g3.cfg);
+
+            assert!(g3.is_ll1());
         }
 
         {
@@ -378,7 +378,7 @@ mod rrcfg_test {
             println!("{:?}", g3.cfg);
             println!("{:?}", g3.cfg.calculate_follow_sets());
 
-            assert!(g3.is_ll1());
+            assert!(!g3.is_ll1());
         }
     }
 }
