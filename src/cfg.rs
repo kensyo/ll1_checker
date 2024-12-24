@@ -6,6 +6,7 @@ type NonTerminal = String;
 type Terminal = String;
 type Symbol = String;
 
+#[derive(Debug)]
 pub struct CFG {
     terminals: HashSet<Rc<Terminal>>,
     non_terminals: HashSet<Rc<NonTerminal>>,
