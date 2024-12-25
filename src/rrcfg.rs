@@ -332,6 +332,175 @@ impl RRCFG {
 
         res
     }
+
+    fn calculate_nullables(&self, s: &Vec<Symbol>) -> bool {
+        let cfg = &self.cfg;
+        let original_nullables = cfg.calculate_nullables();
+
+        for ss in s.iter() {
+            if !(["\\{", "\\}", "\\(", "\\)", "\\|"]
+                .into_iter()
+                .map(|sss| sss.to_string())
+                .collect::<Vec<String>>()
+                .contains(ss)
+                || self.non_terminals.contains(ss)
+                || self.terminals.contains(ss))
+            {
+                panic!("\"{}\" is neither in terminals nor non_terminals.", ss);
+            }
+        }
+
+        self._calculate_nullables_inner(s, &original_nullables)
+    }
+
+    fn _calculate_nullables_inner(
+        &self,
+        s: &[Symbol],
+        original_nullables: &HashMap<Rc<String>, bool>,
+    ) -> bool {
+        let n = s.len();
+
+        if n == 0 {
+            return true;
+        }
+
+        if n == 1 {
+            if self.non_terminals.contains(&s[0]) {
+                return original_nullables[&s[0]];
+            }
+
+            if self.terminals.contains(&s[0]) {
+                return false;
+            }
+
+            panic!(
+                "parse failed: \"{}\" is neither in terminals nor non_teminals",
+                &s[0]
+            );
+        }
+
+        let broken_regular_expressions_by_vertical_bar =
+            Self::break_regular_expression_by_vertical_bar(s);
+
+        if broken_regular_expressions_by_vertical_bar.len() != 1 {
+            let mut is_nullable = false;
+            for ss in broken_regular_expressions_by_vertical_bar.iter() {
+                is_nullable =
+                    is_nullable || self._calculate_nullables_inner(ss, original_nullables);
+            }
+
+            return is_nullable;
+        }
+
+        let ss = &broken_regular_expressions_by_vertical_bar[0];
+
+        if ss[0] == "\\{" && ss[n - 1] == "\\}" {
+            return true;
+        }
+
+        if ss[0] == "\\(" && ss[n - 1] == "\\)" {
+            return self._calculate_nullables_inner(&s[1..n - 1], original_nullables);
+        }
+
+        let broken_regular_expression_by_concatenation =
+            Self::break_regular_expression_by_concatenation(ss);
+
+        let mut is_nullable = true;
+        for sss in broken_regular_expression_by_concatenation.iter() {
+            is_nullable = is_nullable && self._calculate_nullables_inner(sss, original_nullables);
+        }
+
+        return is_nullable;
+    }
+
+    /// 一番外側の | で分解
+    ///
+    /// # Examples
+    ///
+    /// {hoge} | fuga | {piyo1 | piyo2} を {hoge}, fuga, {piyo1 | piyo2} に分解
+    fn break_regular_expression_by_vertical_bar(s: &[Symbol]) -> Vec<Vec<Symbol>> {
+        let mut brace_count = 0;
+        let mut parenthesis_count = 0;
+
+        let mut stack = vec![];
+
+        let mut res = vec![];
+
+        for symbol in s.iter() {
+            if symbol == "\\|" {
+                if parenthesis_count == 0 && brace_count == 0 {
+                    res.push(stack);
+                    stack = vec![];
+                    continue;
+                }
+            }
+
+            stack.push(symbol.clone());
+
+            if symbol == "\\{" {
+                brace_count += 1;
+            }
+            if symbol == "\\}" {
+                brace_count -= 1;
+            }
+            if symbol == "\\(" {
+                parenthesis_count += 1;
+            }
+            if symbol == "\\)" {
+                parenthesis_count -= 1;
+            }
+        }
+
+        res.push(stack);
+
+        if !(parenthesis_count == 0 && brace_count == 0) {
+            panic!("parse failed in breaking by vertical bar");
+        }
+
+        res
+    }
+
+    /// 一番外側のシンボルの結合で分解
+    ///
+    /// # Examples
+    ///
+    /// {hoge} fuga (piyo1 | piyo2) を {hoge}, fuga, (piyo1 | piyo2) に分解
+    ///
+    /// # Remark
+    ///
+    /// 一番外側の | を無くした後のシンボル列に用いる
+    fn break_regular_expression_by_concatenation(s: &[Symbol]) -> Vec<Vec<Symbol>> {
+        let mut stack = vec![];
+
+        let mut res = vec![];
+
+        let mut brace_count = 0;
+        let mut parenthesis_count = 0;
+
+        for symbol in s.iter() {
+            if symbol == "\\(" {
+                parenthesis_count += 1;
+            } else if symbol == "\\{" {
+                brace_count += 1;
+            } else if symbol == "\\)" {
+                parenthesis_count -= 1;
+            } else if symbol == "\\}" {
+                brace_count -= 1;
+            }
+            stack.push(symbol.clone());
+
+            if parenthesis_count == 0 && brace_count == 0 {
+                res.push(stack);
+                stack = vec![];
+            }
+        }
+
+        if !(parenthesis_count == 0 && brace_count == 0) {
+            panic!("parse failed in breaking by concatenation");
+        }
+
+        res
+    }
 }
 
 #[cfg(test)]
@@ -380,5 +549,54 @@ mod rrcfg_test {
 
             assert!(!g3.is_ll1());
         }
+    }
+
+    #[test]
+    fn check_break_rhs_by_vertical_bar() {
+        let target = vec![
+            "(", "\\{", "E", "\\|", "F", "\\(", "A", "\\|", "E", "\\)", "\\}", ")", "\\|", "i",
+        ];
+        let target = target
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<String>>();
+
+        let expected = [
+            vec![
+                "(", "\\{", "E", "\\|", "F", "\\(", "A", "\\|", "E", "\\)", "\\}", ")",
+            ]
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect(),
+            vec!["i".to_string()],
+        ];
+
+        assert_eq!(
+            RRCFG::break_regular_expression_by_vertical_bar(&target),
+            expected
+        );
+    }
+
+    // テストが弱い
+    #[test]
+    fn check_nullables_() {
+        let terminals = vec!["+", "*", "i", "(", ")"];
+
+        let non_terminals = vec!["E", "T", "F"];
+
+        let productions = vec![
+            ("E", vec!["T", "\\{", "+", "T", "\\}"]),
+            ("T", vec!["F", "\\{", "*", "F", "\\}"]),
+            ("F", vec!["(", "E", ")", "\\|", "i"]),
+        ];
+
+        let start_symbol = "E";
+
+        let g3 = RRCFG::new(terminals, non_terminals, productions, start_symbol);
+
+        assert_eq!(
+            g3.calculate_nullables(&vec!["\\{".to_string(), "E".to_string(), "\\}".to_string()]),
+            true
+        );
     }
 }
