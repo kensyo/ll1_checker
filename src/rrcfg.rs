@@ -394,23 +394,30 @@ impl RRCFG {
 
         let ss = &broken_regular_expressions_by_vertical_bar[0];
 
-        if ss[0] == "\\{" && ss[n - 1] == "\\}" {
-            return true;
-        }
-
-        if ss[0] == "\\(" && ss[n - 1] == "\\)" {
-            return self._calculate_nullables_inner(&s[1..n - 1], original_nullables);
-        }
-
         let broken_regular_expression_by_concatenation =
             Self::break_regular_expression_by_concatenation(ss);
 
-        let mut is_nullable = true;
-        for sss in broken_regular_expression_by_concatenation.iter() {
-            is_nullable = is_nullable && self._calculate_nullables_inner(sss, original_nullables);
+        if broken_regular_expression_by_concatenation.len() != 1 {
+            let mut is_nullable = true;
+            for sss in broken_regular_expression_by_concatenation.iter() {
+                is_nullable =
+                    is_nullable && self._calculate_nullables_inner(sss, original_nullables);
+            }
+
+            return is_nullable;
         }
 
-        return is_nullable;
+        let sss = &broken_regular_expression_by_concatenation[0];
+
+        if sss[0] == "\\{" && ss[n - 1] == "\\}" {
+            return true;
+        }
+
+        if sss[0] == "\\(" && ss[n - 1] == "\\)" {
+            return self._calculate_nullables_inner(&s[1..n - 1], original_nullables);
+        }
+
+        panic!("something wrong occured in calculating first sets: {:?}?", s);
     }
 
     /// 一番外側の | で分解
