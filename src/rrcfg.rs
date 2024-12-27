@@ -333,10 +333,19 @@ impl RRCFG {
         res
     }
 
-    fn calculate_nullables(&self, s: &Vec<Symbol>) -> bool {
-        let cfg = &self.cfg;
-        let original_nullables = cfg.calculate_nullables();
+    fn calculate_nullable(&self, s: &Vec<Symbol>) -> bool {
+        self.validate_symbols(s);
 
+        self._calculate_nullable_inner(s)
+    }
+
+    fn calculate_first_set(&self, s: &Vec<Symbol>) -> HashSet<Symbol> {
+        self.validate_symbols(s);
+
+        self._calculate_first_set_inner(s)
+    }
+
+    fn validate_symbols(&self, s: &Vec<Symbol>) {
         for ss in s.iter() {
             if !(["\\{", "\\}", "\\(", "\\)", "\\|"]
                 .into_iter()
@@ -349,15 +358,9 @@ impl RRCFG {
                 panic!("\"{}\" is neither in terminals nor non_terminals.", ss);
             }
         }
-
-        self._calculate_nullables_inner(s, &original_nullables)
     }
 
-    fn _calculate_nullables_inner(
-        &self,
-        s: &[Symbol],
-        original_nullables: &HashMap<Rc<String>, bool>,
-    ) -> bool {
+    fn _calculate_nullable_inner(&self, s: &[Symbol]) -> bool {
         let n = s.len();
 
         if n == 0 {
@@ -366,6 +369,7 @@ impl RRCFG {
 
         if n == 1 {
             if self.non_terminals.contains(&s[0]) {
+                let original_nullables = &self.cfg.calculate_nullables();
                 return original_nullables[&s[0]];
             }
 
@@ -375,7 +379,7 @@ impl RRCFG {
 
             panic!(
                 "parse failed: \"{}\" is neither in terminals nor non_teminals",
-                &s[0]
+                s[0]
             );
         }
 
@@ -385,8 +389,7 @@ impl RRCFG {
         if broken_regular_expressions_by_vertical_bar.len() != 1 {
             let mut is_nullable = false;
             for ss in broken_regular_expressions_by_vertical_bar.iter() {
-                is_nullable =
-                    is_nullable || self._calculate_nullables_inner(ss, original_nullables);
+                is_nullable = is_nullable || self._calculate_nullable_inner(ss);
             }
 
             return is_nullable;
@@ -400,8 +403,7 @@ impl RRCFG {
         if broken_regular_expression_by_concatenation.len() != 1 {
             let mut is_nullable = true;
             for sss in broken_regular_expression_by_concatenation.iter() {
-                is_nullable =
-                    is_nullable && self._calculate_nullables_inner(sss, original_nullables);
+                is_nullable = is_nullable && self._calculate_nullable_inner(sss);
             }
 
             return is_nullable;
@@ -414,10 +416,83 @@ impl RRCFG {
         }
 
         if sss[0] == "\\(" && ss[n - 1] == "\\)" {
-            return self._calculate_nullables_inner(&s[1..n - 1], original_nullables);
+            return self._calculate_nullable_inner(&s[1..n - 1]);
         }
 
-        panic!("something wrong occured in calculating first sets: {:?}?", s);
+        panic!("something wrong occured in calculating nullable: {:?}?", s);
+    }
+
+    fn _calculate_first_set_inner(&self, s: &[Symbol]) -> HashSet<Symbol> {
+        let n = s.len();
+
+        if n == 0 {
+            return HashSet::new();
+        }
+
+        if n == 1 {
+            if self.non_terminals.contains(&s[0]) {
+                let original_first_set = &self.cfg.calculate_first_sets()[&s[0]];
+
+                let first_set = original_first_set
+                    .iter()
+                    .map(|v| (**v).clone())
+                    .collect::<HashSet<_>>();
+
+                return first_set;
+            }
+
+            if self.terminals.contains(&s[0]) {
+                let mut first_set = HashSet::new();
+                first_set.insert(s[0].clone());
+                return first_set;
+            }
+
+            panic!(
+                "parse failed: \"{}\" is neither in terminals nor non_teminals",
+                s[0]
+            );
+        }
+
+        let broken_regular_expressions_by_vertical_bar =
+            Self::break_regular_expression_by_vertical_bar(s);
+
+        if broken_regular_expressions_by_vertical_bar.len() != 1 {
+            let mut first_set = HashSet::new();
+            for ss in broken_regular_expressions_by_vertical_bar.iter() {
+                first_set.extend(self._calculate_first_set_inner(ss));
+            }
+
+            return first_set;
+        }
+
+        let ss = &broken_regular_expressions_by_vertical_bar[0];
+
+        let broken_regular_expression_by_concatenation =
+            Self::break_regular_expression_by_concatenation(ss);
+
+        if broken_regular_expression_by_concatenation.len() != 1 {
+            let mut first_set = HashSet::new();
+            for ss in broken_regular_expression_by_concatenation.iter() {
+                first_set.extend(self._calculate_first_set_inner(ss));
+                if !self.calculate_nullable(ss) {
+                    break;
+                }
+            }
+
+            return first_set;
+        }
+
+        let sss = &broken_regular_expression_by_concatenation[0];
+
+        if sss[0] == "\\{" && ss[n - 1] == "\\}" {
+            return self._calculate_first_set_inner(&s[1..n - 1]);
+        }
+
+        if sss[0] == "\\(" && ss[n - 1] == "\\)" {
+            return self._calculate_first_set_inner(&s[1..n - 1]);
+        }
+
+        panic!("something wrong occured in calculating first set: {:?}?", s);
     }
 
     /// 一番外側の | で分解
@@ -602,8 +677,52 @@ mod rrcfg_test {
         let g3 = RRCFG::new(terminals, non_terminals, productions, start_symbol);
 
         assert_eq!(
-            g3.calculate_nullables(&vec!["\\{".to_string(), "E".to_string(), "\\}".to_string()]),
+            g3.calculate_nullable(&vec!["\\{".to_string(), "E".to_string(), "\\}".to_string()]),
             true
+        );
+    }
+
+    // テストが弱い
+    #[test]
+    fn check_first_set_() {
+        let terminals = vec!["+", "*", "i", "(", ")"];
+
+        let non_terminals = vec!["E", "T", "F"];
+
+        let productions = vec![
+            ("E", vec!["T", "\\{", "+", "T", "\\}"]),
+            ("T", vec!["F", "\\{", "*", "F", "\\}"]),
+            ("F", vec!["(", "E", ")", "\\|", "i"]),
+        ];
+
+        let start_symbol = "E";
+
+        let g3 = RRCFG::new(terminals, non_terminals, productions, start_symbol);
+
+        assert_eq!(
+            g3.calculate_first_set(&vec!["+".to_string(), "T".to_string()]),
+            vec!["+".to_string()]
+                .into_iter()
+                .collect::<HashSet<String>>()
+        );
+
+        assert_eq!(
+            g3.calculate_first_set(&vec!["T".to_string()]),
+            vec!["i".to_string(), "(".to_string()]
+                .into_iter()
+                .collect::<HashSet<String>>()
+        );
+
+        assert_eq!(
+            g3.calculate_first_set(&vec![
+                "\\{".to_string(),
+                "*".to_string(),
+                "F".to_string(),
+                "\\}".to_string()
+            ]),
+            vec!["*".to_string()]
+                .into_iter()
+                .collect::<HashSet<String>>()
         );
     }
 }
