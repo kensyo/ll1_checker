@@ -359,6 +359,32 @@ impl RRCFG {
         follow_set
     }
 
+    /// s -> α | β という productions を持つ s に対して、s -> α と s -> β のディレクターを返す
+    pub fn calculate_director_set(&self, s: &NonTerminal) -> HashMap<Vec<Symbol>, HashSet<Symbol>> {
+        if !self.non_terminals.contains(s) {
+            panic!("{} is not a non terminal.", s);
+        }
+
+        let follow_set = self.calculate_follow_set(s);
+        let rhs_s = self.productions[&Rc::new(s.clone())]
+            .iter()
+            .map(|rc| (**rc).clone())
+            .collect::<Vec<Symbol>>();
+
+        let broken_rhs_s = Self::break_regular_expression_by_vertical_bar(&rhs_s);
+
+        let mut res = HashMap::new();
+        for rhs in broken_rhs_s.iter() {
+            let mut director_set = self.calculate_first_set(rhs);
+            if self.calculate_nullable(rhs) {
+                director_set.extend(follow_set.clone());
+            }
+            res.insert(rhs.clone(), director_set);
+        }
+
+        res
+    }
+
     fn validate_symbols(&self, s: &Vec<Symbol>) {
         for ss in s.iter() {
             if !(["\\{", "\\}", "\\(", "\\)", "\\|"]
@@ -738,5 +764,41 @@ mod rrcfg_test {
                 .into_iter()
                 .collect::<HashSet<String>>()
         );
+    }
+
+    // テストが弱い
+    #[test]
+    fn check_director_set_() {
+        let terminals = vec!["+", "*", "i", "(", ")"];
+
+        let non_terminals = vec!["E", "T", "F"];
+
+        let productions = vec![
+            ("E", vec!["T", "\\{", "+", "T", "\\}"]),
+            ("T", vec!["F", "\\{", "*", "F", "\\}"]),
+            ("F", vec!["(", "E", ")", "\\|", "i"]),
+        ];
+
+        let start_symbol = "E";
+
+        let g3 = RRCFG::new(terminals, non_terminals, productions, start_symbol);
+
+        let d1 = g3.calculate_director_set(&"E".to_string());
+        let mut hs = HashSet::new();
+        hs.insert("(".to_string());
+        hs.insert("i".to_string());
+        let mut d1_expected = HashMap::new();
+        d1_expected.insert(
+            vec![
+                "T".to_string(),
+                "\\{".to_string(),
+                "+".to_string(),
+                "T".to_string(),
+                "\\}".to_string(),
+            ],
+            hs,
+        );
+
+        assert_eq!(d1, d1_expected);
     }
 }
