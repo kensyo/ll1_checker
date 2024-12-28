@@ -333,16 +333,30 @@ impl RRCFG {
         res
     }
 
-    fn calculate_nullable(&self, s: &Vec<Symbol>) -> bool {
+    pub fn calculate_nullable(&self, s: &Vec<Symbol>) -> bool {
         self.validate_symbols(s);
 
         self._calculate_nullable_inner(s)
     }
 
-    fn calculate_first_set(&self, s: &Vec<Symbol>) -> HashSet<Symbol> {
+    pub fn calculate_first_set(&self, s: &Vec<Symbol>) -> HashSet<Symbol> {
         self.validate_symbols(s);
 
         self._calculate_first_set_inner(s)
+    }
+
+    pub fn calculate_follow_set(&self, s: &Symbol) -> HashSet<Symbol> {
+        if !self.non_terminals.contains(s) {
+            panic!("{} is not a non terminal", s);
+        }
+
+        let original_follow_set = &self.cfg.calculate_follow_sets()[s];
+        let follow_set = original_follow_set
+            .iter()
+            .map(|v| (**v).clone())
+            .collect::<HashSet<_>>();
+
+        follow_set
     }
 
     fn validate_symbols(&self, s: &Vec<Symbol>) {
