@@ -1,4 +1,6 @@
 use core::panic;
+use std::borrow::{Borrow, BorrowMut};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -12,6 +14,10 @@ pub struct CFG {
     non_terminals: HashSet<Rc<NonTerminal>>,
     productions: HashMap<Rc<NonTerminal>, HashSet<Vec<Rc<Symbol>>>>,
     start_symbol: Rc<Terminal>,
+    // 以下はキャッシュ
+    nullables: RefCell<Option<HashMap<Rc<NonTerminal>, bool>>>,
+    first_sets: RefCell<Option<HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>>>>,
+    follow_sets: RefCell<Option<HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>>>>,
 }
 
 impl CFG {
@@ -112,10 +118,17 @@ impl CFG {
             non_terminals: nt_s,
             productions: p_s,
             start_symbol: s,
+            nullables: RefCell::new(None),
+            first_sets: RefCell::new(None),
+            follow_sets: RefCell::new(None),
         }
     }
 
     pub fn calculate_nullables(&self) -> HashMap<Rc<NonTerminal>, bool> {
+        if let Some(cache) = self.nullables.borrow().as_ref() {
+            return cache.clone();
+        }
+
         let mut nullables = self
             .non_terminals
             .iter()
@@ -156,10 +169,16 @@ impl CFG {
             }
         }
 
+        *self.nullables.borrow_mut() = Some(nullables.clone());
+
         nullables
     }
 
     pub fn calculate_first_sets(&self) -> HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>> {
+        if let Some(cache) = self.first_sets.borrow().as_ref() {
+            return cache.clone();
+        }
+
         let mut first_sets = self
             .non_terminals
             .iter()
@@ -209,10 +228,16 @@ impl CFG {
             }
         }
 
+        *self.first_sets.borrow_mut() = Some(first_sets.clone());
+
         first_sets
     }
 
     pub fn calculate_follow_sets(&self) -> HashMap<Rc<NonTerminal>, HashSet<Rc<Terminal>>> {
+        if let Some(cache) = self.follow_sets.borrow().as_ref() {
+            return cache.clone();
+        }
+
         let mut follow_sets = self
             .non_terminals
             .iter()
@@ -296,6 +321,8 @@ impl CFG {
             }
         }
 
+        *self.follow_sets.borrow_mut() = Some(follow_sets.clone());
+
         follow_sets
     }
 
@@ -371,13 +398,11 @@ impl CFG {
     }
 
     /// notest
-    pub fn show_director_sets(&self)  {
+    pub fn show_director_sets(&self) {
         let director_sets = self.calculate_director_sets();
 
         println!("{:?}", director_sets);
-
     }
-
 }
 
 #[cfg(test)]
