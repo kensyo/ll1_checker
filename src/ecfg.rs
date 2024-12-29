@@ -9,7 +9,7 @@ type NonTerminal = String;
 type Terminal = String;
 type Symbol = String;
 
-pub struct RRCFG {
+pub struct ECFG {
     terminals: HashSet<Rc<Terminal>>,
     non_terminals: HashSet<Rc<NonTerminal>>,
     productions: HashMap<Rc<String>, Vec<Rc<String>>>,
@@ -17,8 +17,8 @@ pub struct RRCFG {
     cfg: CFG,
 }
 
-impl RRCFG {
-    pub fn is_ll1(&self) -> bool {
+impl ECFG {
+    pub fn is_ell1(&self) -> bool {
         self.cfg.is_ll1()
     }
 
@@ -136,7 +136,7 @@ impl RRCFG {
 
         let cfg = Self::parse_productions(&t_s, &nt_s, &p_s, &s);
 
-        RRCFG {
+        ECFG {
             terminals: t_s,
             non_terminals: nt_s,
             productions: p_s,
@@ -630,7 +630,7 @@ mod rrcfg_test {
     use super::*;
 
     #[test]
-    fn check_ll1() {
+    fn check_ell1() {
         {
             let terminals = vec!["+", "*", "i", "(", ")"];
 
@@ -644,11 +644,11 @@ mod rrcfg_test {
 
             let start_symbol = "E";
 
-            let g3 = RRCFG::new(terminals, non_terminals, productions, start_symbol);
+            let g3 = ECFG::new(terminals, non_terminals, productions, start_symbol);
 
             println!("{:?}", g3.cfg);
 
-            assert!(g3.is_ll1());
+            assert!(g3.is_ell1());
         }
 
         {
@@ -664,12 +664,12 @@ mod rrcfg_test {
 
             let start_symbol = "E";
 
-            let g3 = RRCFG::new(terminals, non_terminals, productions, start_symbol);
+            let g3 = ECFG::new(terminals, non_terminals, productions, start_symbol);
 
             println!("{:?}", g3.cfg);
             println!("{:?}", g3.cfg.calculate_follow_sets());
 
-            assert!(!g3.is_ll1());
+            assert!(!g3.is_ell1());
         }
     }
 
@@ -694,7 +694,7 @@ mod rrcfg_test {
         ];
 
         assert_eq!(
-            RRCFG::break_regular_expression_by_vertical_bar(&target),
+            ECFG::break_regular_expression_by_vertical_bar(&target),
             expected
         );
     }
@@ -714,7 +714,7 @@ mod rrcfg_test {
 
         let start_symbol = "E";
 
-        let g3 = RRCFG::new(terminals, non_terminals, productions, start_symbol);
+        let g3 = ECFG::new(terminals, non_terminals, productions, start_symbol);
 
         assert_eq!(
             g3.calculate_nullable(&vec!["\\{".to_string(), "E".to_string(), "\\}".to_string()]),
@@ -737,7 +737,7 @@ mod rrcfg_test {
 
         let start_symbol = "E";
 
-        let g3 = RRCFG::new(terminals, non_terminals, productions, start_symbol);
+        let g3 = ECFG::new(terminals, non_terminals, productions, start_symbol);
 
         assert_eq!(
             g3.calculate_first_set(&vec!["+".to_string(), "T".to_string()]),
@@ -781,7 +781,7 @@ mod rrcfg_test {
 
         let start_symbol = "E";
 
-        let g3 = RRCFG::new(terminals, non_terminals, productions, start_symbol);
+        let g3 = ECFG::new(terminals, non_terminals, productions, start_symbol);
 
         let d1 = g3.calculate_director_set(&"E".to_string());
         let mut hs = HashSet::new();
