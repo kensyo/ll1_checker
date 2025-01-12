@@ -9,6 +9,7 @@ type NonTerminal = String;
 type Terminal = String;
 type Symbol = String;
 
+#[derive(Debug)]
 pub struct ECFG {
     terminals: HashSet<Rc<Terminal>>,
     non_terminals: HashSet<Rc<NonTerminal>>,
